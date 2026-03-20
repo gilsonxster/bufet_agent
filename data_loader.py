@@ -5,29 +5,48 @@ import requests
 import io
 
 @st.cache_data(ttl=86400)
-def get_sp500_sectors() -> dict:
-    """Scrapes Wikipedia with a User-Agent to bypass 403 Forbidden blockers."""
+def get_index_sectors(index_name: str) -> dict:
+    """Scrapes Wikipedia mapping tickers by Sector for S&P 500, Nasdaq 100, or Dow Jones."""
     try:
-        url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        urls = {
+            "S&P 500": 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
+            "Nasdaq 100": 'https://en.wikipedia.org/wiki/Nasdaq-100',
+            "Dow Jones 30": 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average'
+        }
+        url = urls.get(index_name, urls["S&P 500"])
+        headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers)
         
-        table = pd.read_html(io.StringIO(response.text))
-        df = table[0]
-        df['Symbol'] = df['Symbol'].str.replace('.', '-', regex=False)
+        tables = pd.read_html(io.StringIO(response.text))
+        df = None
+        for t in tables:
+            if 'Symbol' in t.columns or 'Ticker' in t.columns:
+                df = t
+                break
+                
+        if df is None:
+            return {"Error": []}
+            
+        ticker_col = 'Symbol' if 'Symbol' in df.columns else 'Ticker'
+        sector_col = 'GICS Sector' if 'GICS Sector' in df.columns else None
+        if not sector_col and 'Sector' in df.columns:
+            sector_col = 'Sector'
+            
+        df[ticker_col] = df[ticker_col].astype(str).str.replace('.', '-', regex=False)
         
         sectors_dict = {}
-        for sector in df['GICS Sector'].unique():
-            tickers = df[df['GICS Sector'] == sector]['Symbol'].tolist()
-            sectors_dict[sector] = tickers
+        if sector_col:
+            for sector in df[sector_col].unique():
+                if pd.isna(sector): continue
+                tickers = df[df[sector_col] == sector][ticker_col].tolist()
+                sectors_dict[sector] = tickers
+        else:
+            sectors_dict["All Sectors"] = df[ticker_col].tolist()
+            
         return sectors_dict
     except Exception as e:
-        print(f"Failed to scrape sectors: {e}")
-        return {
-            "Information Technology": ["AAPL", "MSFT", "NVDA"],
-            "Financials": ["JPM", "BAC", "V", "MA"],
-            "Energy": ["XOM", "CVX", "COP"]
-        }
+        print(f"Failed to scrape index {index_name}: {e}")
+        return {"Fallback": []}
 
 def buffett_lynch_screener(ticker_list: list) -> list:
     """Finds candidates meeting baseline ROE, PEG, and Debt-to-Equity rules"""

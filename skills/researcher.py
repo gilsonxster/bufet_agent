@@ -5,14 +5,13 @@ from google.adk.tools import ToolContext
 from data_loader import load_watchlist
 from fundamentals import analyze_fundamentals
 
-DEFAULT_WATCHLIST = ["AAPL", "MSFT", "GOOG", "KO", "BAC", "AXP", "JNJ", "TSLA", "NVDA", "WMT"]
-
 async def get_watchlist_fundamentals(tool_context: ToolContext) -> dict:
-    """Collects programmatic fundamental analysis for the default watchlist."""
-    target_watchlist = tool_context.state.get("screened_tickers")
+    """Collects programmatic fundamental analysis for the screened watchlist."""
+    target_watchlist = tool_context.state.get("screened_tickers", [])
     if not target_watchlist:
-        print("No screened tickers found in state. Falling back to default.")
-        target_watchlist = DEFAULT_WATCHLIST
+        print("\n[INFO] No stocks passed the strict fundamental screener. Terminating analysis.\n")
+        tool_context.state["research_data"] = json.dumps([])
+        return {"status": "success", "message": "No stocks met the strict investing criteria."}
         
     print(f"Loading deep fundamental data for {len(target_watchlist)} candidates...")
     raw_data = load_watchlist(target_watchlist)

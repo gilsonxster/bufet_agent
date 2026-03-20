@@ -1,7 +1,7 @@
 import streamlit as st
 import asyncio
 from bufet_agent import run_bufet_pipeline
-from data_loader import get_sp500_sectors
+from data_loader import get_index_sectors
 
 st.set_page_config(page_title="Bufet AI System", layout="wide")
 
@@ -20,15 +20,16 @@ with st.sidebar:
     st.markdown("---")
     st.header("Watchlist")
     
-    input_mode = st.radio("Input Mode:", ["Market Sector", "Custom Tickers"])
+    input_mode = st.radio("Input Mode:", ["Market Index", "Custom Tickers"])
     
     selected_tickers = []
     
-    if input_mode == "Market Sector":
-        sector_dict = get_sp500_sectors()
-        sector = st.selectbox("Choose an S&P 500 Sector:", list(sector_dict.keys()))
+    if input_mode == "Market Index":
+        index_choice = st.selectbox("Choose an Index:", ["S&P 500", "Nasdaq 100", "Dow Jones 30"])
+        sector_dict = get_index_sectors(index_choice)
+        sector = st.selectbox(f"Choose a Sector within {index_choice}:", list(sector_dict.keys()))
         selected_tickers = sector_dict[sector]
-        st.write(f"**{len(selected_tickers)}** active S&P 500 tickers identified in this sector (These will individually be passed through the Fundamental Screener!):")
+        st.write(f"**{len(selected_tickers)}** active tickers identified in this sector (These will individually be passed through the Fundamental Screener!):")
         
     else:
         custom_input = st.text_area("Enter Tickers (comma separated):", "MSTR, PLTR, COIN, RKLB, ASTS")
