@@ -1,4 +1,7 @@
 import yfinance as yf
+import logging
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+
 import pandas as pd
 import streamlit as st
 import requests
@@ -11,7 +14,10 @@ def get_index_sectors(index_name: str) -> dict:
         urls = {
             "S&P 500": 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
             "Nasdaq 100": 'https://en.wikipedia.org/wiki/Nasdaq-100',
-            "Dow Jones 30": 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average'
+            "Dow Jones 30": 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average',
+            "Russell 1000 (Small/Mid Cap)": 'https://en.wikipedia.org/wiki/Russell_1000_Index',
+            "FTSE 100 (UK)": 'https://en.wikipedia.org/wiki/FTSE_100_Index',
+            "EURO STOXX 50 (Europe)": 'https://en.wikipedia.org/wiki/EURO_STOXX_50'
         }
         url = urls.get(index_name, urls["S&P 500"])
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -19,20 +25,30 @@ def get_index_sectors(index_name: str) -> dict:
         
         tables = pd.read_html(io.StringIO(response.text))
         df = None
+        ticker_col = None
         for t in tables:
-            if 'Symbol' in t.columns or 'Ticker' in t.columns:
-                df = t
+            for col in ['Symbol', 'Ticker', 'EPIC']:
+                if col in t.columns:
+                    df = t
+                    ticker_col = col
+                    break
+            if df is not None:
                 break
                 
         if df is None:
             return {"Error": []}
             
-        ticker_col = 'Symbol' if 'Symbol' in df.columns else 'Ticker'
         sector_col = 'GICS Sector' if 'GICS Sector' in df.columns else None
         if not sector_col and 'Sector' in df.columns:
             sector_col = 'Sector'
+        if not sector_col and 'Industry' in df.columns:
+            sector_col = 'Industry'
             
         df[ticker_col] = df[ticker_col].astype(str).str.replace('.', '-', regex=False)
+        
+        # Fix yfinance parsing for London Stock Exchange
+        if index_name == "FTSE 100 (UK)":
+            df[ticker_col] = df[ticker_col].apply(lambda x: f"{x}.L" if not x.endswith(".L") else x)
         
         sectors_dict = {}
         if sector_col:
