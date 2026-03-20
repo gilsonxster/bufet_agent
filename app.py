@@ -9,7 +9,16 @@ st.title("📈 Bufet AI Agent System")
 st.markdown("Select a market sector or type your own custom tickers. The **Screener Agent** will filter them, and the **Analyst Panel** will dive deep to find the Top 5 consensus buys, grounded with real-time news.")
 
 with st.sidebar:
-    st.header("Watchlist Settings")
+    st.header("Settings")
+    if "user_api_key" not in st.session_state:
+        st.session_state.user_api_key = ""
+        
+    user_key_input = st.text_input("Gemini API Key (Optional)", value=st.session_state.user_api_key, type="password", help="Leave blank to use the app's default shared API key.")
+    if user_key_input:
+        st.session_state.user_api_key = user_key_input
+        
+    st.markdown("---")
+    st.header("Watchlist")
     
     input_mode = st.radio("Input Mode:", ["Market Sector", "Custom Tickers"])
     
@@ -35,7 +44,7 @@ if run_btn:
         with st.spinner(f"Agents are currently analyzing {len(selected_tickers)} stocks... (This may take several minutes)"):
             try:
                 # Streamlit runs in a synchronous loop, so we use asyncio.run
-                final_report = asyncio.run(run_bufet_pipeline(selected_tickers))
+                final_report = asyncio.run(run_bufet_pipeline(selected_tickers, st.session_state.user_api_key))
                 
                 if final_report:
                     st.success("Analysis Complete!")

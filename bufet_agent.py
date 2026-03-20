@@ -16,14 +16,6 @@ from skills.news_reviewer import create_news_reviewer
 
 # Load environment variables
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in .env file")
-
-# Force using API key for ADK
-os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
-os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
 
 # Establish the multi-agent pipeline
 pipeline = SequentialAgent(
@@ -40,7 +32,18 @@ pipeline = SequentialAgent(
     ]
 )
 
-async def run_bufet_pipeline(custom_watchlist: list) -> str:
+async def run_bufet_pipeline(custom_watchlist: list, user_api_key: str = "") -> str:
+    # Resolve the API Key efficiently
+    system_key = os.getenv("GEMINI_API_KEY")
+    active_key = user_api_key if user_api_key.strip() else system_key
+    
+    if not active_key:
+        return "Error: No Gemini API Key was provided. Please enter one in the sidebar."
+        
+    # Force utilizing the chosen API key directly at runtime for ADK 
+    os.environ["GOOGLE_API_KEY"] = active_key
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
+
     print(f"Starting Bufet Pipeline via Web UI for {len(custom_watchlist)} tickers...")
     
     my_session_id = os.urandom(8).hex()
