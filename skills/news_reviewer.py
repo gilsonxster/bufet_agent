@@ -4,7 +4,7 @@ from google.adk.tools import google_search
 def create_news_reviewer() -> Agent:
     return Agent(
         name="news_reviewer",
-        model="gemini-2.5-flash",
+        model="gemini-3-flash-preview",
         instruction="""
 You are a Macro-Economic News Reviewer. You have access to Google Search to look up the latest news.
 The portfolio manager has selected the following Top 5 stocks based on fundamentals:
