@@ -12,6 +12,8 @@ with st.sidebar:
     st.header("Settings")
     if "user_api_key" not in st.session_state:
         st.session_state.user_api_key = ""
+    if "report_history" not in st.session_state:
+        st.session_state.report_history = []
         
     user_key_input = st.text_input("Gemini API Key (Optional)", value=st.session_state.user_api_key, type="password", help="Leave blank to use the app's default shared API key.")
     if user_key_input:
@@ -25,7 +27,8 @@ with st.sidebar:
     selected_tickers = []
     
     if input_mode == "Market Index":
-        index_choice = st.selectbox("Choose an Index:", ["S&P 500", "Nasdaq 100", "Dow Jones 30"])
+        indices = ["S&P 500", "Nasdaq 100", "Dow Jones 30", "Russell 1000 (Small/Mid Cap)", "FTSE 100 (UK)", "EURO STOXX 50 (Europe)"]
+        index_choice = st.selectbox("Choose a Market Index:", indices)
         sector_dict = get_index_sectors(index_choice)
         sector = st.selectbox(f"Choose a Sector within {index_choice}:", list(sector_dict.keys()))
         selected_tickers = sector_dict[sector]
@@ -35,6 +38,21 @@ with st.sidebar:
         custom_input = st.text_area("Enter Tickers (comma separated):", "MSTR, PLTR, COIN, RKLB, ASTS")
         if custom_input:
             selected_tickers = [x.strip().upper() for x in custom_input.split(",") if x.strip()]
+
+    st.markdown("---")
+    st.header("Session History")
+    if not st.session_state.report_history:
+        st.info("No prior reports generated.")
+    else:
+        for i, past_report in enumerate(reversed(st.session_state.report_history)):
+            with st.expander(past_report['title']):
+                st.download_button(
+                    label="Download .md",
+                    data=past_report['content'],
+                    file_name=f"bufet_report_{i}.md",
+                    mime="text/markdown",
+                    key=f"hist_dl_{i}"
+                )
 
 run_btn = st.button("Run Multi-Agent Pipeline", type="primary")
 
@@ -48,7 +66,17 @@ if run_btn:
                 final_report = asyncio.run(run_bufet_pipeline(selected_tickers, st.session_state.user_api_key))
                 
                 if final_report:
+                    title_name = sector if input_mode == "Market Index" else "Custom Watchlist"
+                    st.session_state.report_history.append({"title": f"Report: {title_name}", "content": final_report})
+                    
                     st.success("Analysis Complete!")
+                    st.download_button(
+                        label="Download Full Master Report (.md)",
+                        data=final_report,
+                        file_name=f"bufet_master_report.md",
+                        mime="text/markdown",
+                        type="primary"
+                    )
                     st.markdown("---")
                     st.markdown(final_report)
                 else:
