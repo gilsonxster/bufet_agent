@@ -1,10 +1,18 @@
 import os
-import json
-import google.generativeai as genai
+import asyncio
 from dotenv import load_dotenv
 
-from data_loader import load_watchlist
-from fundamentals import analyze_fundamentals
+from google.adk.agents import SequentialAgent, ParallelAgent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+
+# Import agents from skills module
+from skills.screener import create_screener
+from skills.researcher import create_researcher
+from skills.analysts import create_buffett_agent, create_lynch_agent, create_graham_agent, create_legendary_agent
+from skills.portfolio_manager import create_portfolio_manager
+from skills.news_reviewer import create_news_reviewer
 
 # Load environment variables
 load_dotenv()
@@ -13,60 +21,73 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+# Force using API key for ADK
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "False"
 
-# Default watch list of 10 stocks across different sectors
-DEFAULT_WATCHLIST = ["AAPL", "MSFT", "GOOG", "KO", "BAC", "AXP", "JNJ", "TSLA", "NVDA", "WMT"]
+# Establish the multi-agent pipeline
+pipeline = SequentialAgent(
+    name="bufet_master_pipeline",
+    sub_agents=[
+        create_screener(),
+        create_researcher(),
+        ParallelAgent(
+            name="analysts_panel",
+            sub_agents=[create_buffett_agent(), create_lynch_agent(), create_graham_agent(), create_legendary_agent()]
+        ),
+        create_portfolio_manager(),
+        create_news_reviewer()
+    ]
+)
+
+async def run_bufet_pipeline(custom_watchlist: list) -> str:
+    print(f"Starting Bufet Pipeline via Web UI for {len(custom_watchlist)} tickers...")
+    
+    my_session_id = os.urandom(8).hex()
+    session_service = InMemorySessionService()
+    session = await session_service.create_session(
+        app_name="bufet_app",
+        user_id="user_1",
+        session_id=my_session_id
+    )
+    
+    # Initialize state variables
+    session.state["initial_watchlist"] = custom_watchlist
+    session.state["screened_tickers"] = []
+    session.state["research_data"] = "Data not fetched."
+    session.state["buffett_analysis"] = "Waiting on pipeline..."
+    session.state["lynch_analysis"] = "Waiting on pipeline..."
+    session.state["graham_analysis"] = "Waiting on pipeline..."
+    session.state["top_5_stocks"] = "Waiting on pipeline..."
+    
+    runner = Runner(
+        agent=pipeline,
+        app_name="bufet_app",
+        session_service=session_service
+    )
+    
+    initial_message = types.Content(role="user", parts=[types.Part.from_text(text=f"The selected initial watchlist is: {custom_watchlist}. Please run the screener on my initial watchlist, fetch fundamentals for passing stocks, run the parallel analysis panel, select the Top 5 consensus picks, and give me the master report with your news review.")])
+    
+    final_output = ""
+    async for event in runner.run_async(
+        user_id="user_1",
+        session_id=my_session_id,
+        new_message=initial_message
+    ):
+        if event.is_final_response():
+            if event.content and hasattr(event.content, "parts") and event.content.parts:
+                final_output = event.content.parts[0].text
+                
+    return final_output
+
+async def main_async():
+    # Only for CLI fallback
+    print("Running CLI fallback...")
+    res = await run_bufet_pipeline(["AAPL", "PLTR", "MSFT"])
+    print(res)
 
 def main():
-    print("Starting Bufet Agent...")
-    print(f"Loading data for watchlist: {', '.join(DEFAULT_WATCHLIST)}")
-    
-    raw_data = load_watchlist(DEFAULT_WATCHLIST)
-    
-    print("Performing fundamental analysis...")
-    analyzed_data = []
-    for stock in raw_data:
-        try:
-            analysis = analyze_fundamentals(stock)
-            
-            # Extract minimal context for LLM to avoid token limits
-            minimal_record = {
-                "Ticker": analysis["ticker"],
-                "Buffett_Rules": analysis["buffett_analysis"],
-                "Lynch_Rules": analysis["lynch_analysis"]
-            }
-            analyzed_data.append(minimal_record)
-        except Exception as e:
-            print(f"Error analyzing {stock.get('ticker')}: {e}")
-            
-    print("Generating Buy Rate Summary with Gemini...")
-    
-    prompt = f"""
-You are the "Bufet Agent", an AI financial analyst channeling the combined wisdom and investment strategies of Warren Buffett and Peter Lynch.
-
-I will provide you with fundamental analysis data for a watchlist of stocks. We have programmatically evaluated them against key Buffett and Lynch rules of thumb (e.g., ROE, Debt to Equity, PEG Ratio, P/E).
-
-Data:
-{json.dumps(analyzed_data, indent=2)}
-
-Your Core Instructions:
-1. Review the provided programmatic rule checks.
-2. Select the Top 5 best stocks for mid-to-long term investment based *strictly* on standard Buffett (value, moat, strong financials) and Lynch (growth at a reasonable price, low PEG) principles.
-3. Provide a unified "Buy Rate Summary" containing your Top 5 picks.
-4. For each pick, write a brief justification detailing which principles it satisfies and why it makes a good long-term hold based on the data. 
-5. Conclude with a brief overall market sentiment or general advice based on the provided batch of stocks.
-
-Format the output clearly using Markdown headers and bullet points.
-"""
-    
-    response = model.generate_content(prompt)
-    
-    print("\n" + "="*50)
-    print("BUFET AGENT ANALYSIS REPORT")
-    print("="*50 + "\n")
-    print(response.text)
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()

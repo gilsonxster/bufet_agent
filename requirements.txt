@@ -1,4 +1,7 @@
 yfinance
 pandas
-google-generativeai
+google-adk
+streamlit
+lxml
 python-dotenv
+google-adk
