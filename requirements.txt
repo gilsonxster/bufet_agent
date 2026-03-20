@@ -2,6 +2,7 @@ yfinance
 pandas
 google-adk
 streamlit
+altair<5
 lxml
 python-dotenv
 protobuf<=3.20.3
