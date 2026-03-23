@@ -18,8 +18,18 @@ def get_drive_service():
             creds.refresh(Request())
         else:
             if os.path.exists('credentials.json'):
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
+                import json
+                try:
+                    with open('credentials.json', 'r') as f:
+                        data = json.load(f)
+                    if data.get('type') == 'service_account':
+                        creds = service_account.Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
+                    else:
+                        flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                        creds = flow.run_local_server(port=0)
+                except Exception as e:
+                    print(f"Error reading credentials.json: {e}")
+                    return None
             elif os.path.exists('service_account.json'):
                 creds = service_account.Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
             else:
@@ -55,4 +65,59 @@ def upload_to_drive(content, file_name, folder_id):
         return file.get('id')
     except Exception as e:
         print(f"Error uploading to drive: {e}")
+        return None
+
+def is_authenticated():
+    if os.path.exists('token.json'):
+        try:
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            if creds.valid:
+                return True
+            if creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                with open('token.json', 'w') as token:
+                    token.write(creds.to_json())
+                return True
+        except Exception:
+            return False
+            
+    if os.path.exists('service_account.json'):
+        return True
+        
+    if os.path.exists('credentials.json'):
+        import json
+        try:
+            with open('credentials.json', 'r') as f:
+                data = json.load(f)
+            if data.get('type') == 'service_account':
+                return True
+        except:
+            pass
+            
+    return False
+
+def list_drive_files(folder_id):
+    try:
+        service = get_drive_service()
+        if not service:
+            return []
+        
+        query = f"'{folder_id}' in parents and trashed=false"
+        results = service.files().list(q=query, fields="nextPageToken, files(id, name, createdTime)", orderBy="createdTime desc").execute()
+        return results.get('files', [])
+    except Exception as e:
+        print(f"Error listing files: {e}")
+        return []
+
+def get_drive_file_content(file_id):
+    try:
+        service = get_drive_service()
+        if not service:
+            return None
+        
+        request = service.files().get_media(fileId=file_id)
+        file_content = request.execute()
+        return file_content.decode('utf-8')
+    except Exception as e:
+        print(f"Error downloading file content: {e}")
         return None
